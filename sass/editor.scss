@@ -1,0 +1,50 @@
+.editor-list-item {	
+	white-space: pre-wrap;
+	word-wrap: break-word;	
+}
+
+.editor-cursor {
+	position: absolute;
+	top: 0;
+	left: 0px;
+	width: 1px;
+	height: 25px;
+	margin: 0;	
+	padding: 0;
+	vertical-align: top;
+	overflow: hidden;
+
+	&.not-visible {
+		// visibility: hidden;
+		opacity: 0;
+	}
+
+	textarea {
+		border: none;
+		background: none;
+		margin: 0;
+		padding: 0;
+		font-size: 16pt;
+		width: 100%;		
+		// left: 50px;
+		resize: none;
+		overflow: hidden;		
+
+		&:focus {
+			outline: none;
+		}
+	}
+}
+
+.editor-text-ruler {
+	white-space: pre-wrap;
+	position: absolute;
+	top: 800px;
+	background: yellow;
+}
+
+.editor-selection {
+	position: absolute;
+	background: rgba(255, 98, 63, 0.2);	
+	border-radius: 2px;
+} 
