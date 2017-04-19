@@ -6,7 +6,7 @@ That said, this is a port of an editor I wrote for a now defunct project circa 2
 
 ## Usage
 
-This project is not production ready. 
+This project is not production ready. A demo is [available here](https://johncch.github.io/Slab-Editor/)
 
 To run the code, simply clone the repository and `npm install` to acquire all the dependencies. You can then execute `npm run develop` to serve the code out of your local host.
 
