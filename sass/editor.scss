@@ -1,6 +1,13 @@
 .editor-list-item {	
 	white-space: pre-wrap;
 	word-wrap: break-word;	
+	cursor: text;
+}
+
+.editor-row-item {
+	&:hover {
+		background-color: #FAFAFA;
+	}
 }
 
 .editor-cursor {

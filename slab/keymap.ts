@@ -153,11 +153,11 @@ export class DefaultKeyMap implements IKeyMap {
     }
 
     backspace(editor: SlabEditor) {
-        editor.remove(false);
+        editor.delete(false);
     }
 
     delete(editor: SlabEditor) {
-        editor.remove(true);
+        editor.delete(true);
     }
 
     execCommand(editor: SlabEditor, command: IKeyMapCommand): boolean {

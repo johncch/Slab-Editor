@@ -4,7 +4,7 @@ export class TextRuler {
         this.element = document.createElement("span")
         this.element.classList.add("editor-text-ruler");
         // this.element.style.display = "none";
-        //this.element.style.left = "-5000px";
+        this.element.style.left = "-5000px";
         this.element.style["white-space"] = "pre-wrap";
     }
 
@@ -23,11 +23,17 @@ export class TextRuler {
         this.element.textContent = text;
     }
 
-    get width() {
+    get numberOfLines(): number {
+        const style = getComputedStyle(this.element);
+        const lineHeight = parseInt(style.getPropertyValue("line-height"), 10);
+        return Math.round(this.element.offsetHeight / lineHeight);
+    }
+
+    get width(): number {
         return this.element.offsetWidth;
     }
 
-    get height() {
+    get height(): number {
         return this.element.offsetHeight;
     }
 }

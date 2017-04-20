@@ -3,7 +3,8 @@ var path = require("path");
 module.exports = {
     entry: "./src/index.ts",
     output: {
-        filename: "./docs/bundle.js",
+        path: path.join(__dirname, 'docs'),
+        filename: "bundle.js",
     },
     resolve: {
         extensions: [".js", ".json", ".ts", ".d.ts"]
@@ -19,5 +20,10 @@ module.exports = {
                 loaders: ["style-loader", "css-loader", "sass-loader"]
             }
         ]
+    },
+    devServer: {
+        publicPath: "/",
+        contentBase: "./docs",
+        hot: true
     }
 }

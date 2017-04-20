@@ -1,6 +1,8 @@
 import { Cursor } from "./cursor";
 import { ChangeType, Document } from "./document";
+import { IFormatter, PlainTextFormatter } from "./formatter";
 import { defaultKeyMap, IKeyMap } from "./keymap";
+import { PlainTextRenderer } from "./renderer";
 import { Marker, Selection } from "./selection";
 import { Style } from "./style";
 import { TextRuler } from "./textruler";
@@ -21,6 +23,8 @@ export class SlabEditor {
     selection: Selection;
     keymap: IKeyMap;
     style: Style;
+    formatter: IFormatter;
+    renderer: PlainTextRenderer;
 
     constructor(element: HTMLElement, options: {
         keymap?: IKeyMap,
@@ -43,16 +47,12 @@ export class SlabEditor {
     }
 
     // Loads a document
-    load(text: string) {
+    load(text: string = "") {
         this.contentDisplay.innerHTML = "";
-        text = text || "";
         this.docObj = new Document(text);
-        for (let i = 0; i < this.docObj.numLines; i += 1) {
-            const content = this.docObj.lineAt(i);
-            const listItem = this.createLineItem();
-            listItem.textContent = content;
-            this.contentDisplay.appendChild(listItem);
-        }
+        this.formatter = new PlainTextFormatter();
+        this.renderer = new PlainTextRenderer(this.textRuler);
+        this.renderDocument();
         this.docObj.on("change", this.handleDocObjChange.bind(this));
     }
 
@@ -67,6 +67,7 @@ export class SlabEditor {
         this.canvas.appendChild(this.selectionDisplay);
 
         this.textRuler = new TextRuler()
+        this.textRuler.adapt(this.contentDisplay);
         this.canvas.appendChild(this.textRuler.element);
 
         this.cursor = new Cursor(this.style);
@@ -94,7 +95,6 @@ export class SlabEditor {
 
     handleCanvasClick(e: MouseEvent) {
         Utils.log("[click]");
-        Utils.log(e.shiftKey);
     }
 
     handleCanvasDblClick(e: MouseEvent) {
@@ -108,16 +108,18 @@ export class SlabEditor {
     }
 
     handleCanvasMouseDown(e: MouseEvent) {
+        Utils.log("[mouse down]");
         const coords = this.normalizeMouseCoordinates(e);
         const pos = this.locate(coords.x, coords.y);
         this.selection.anchor.set(pos.line, pos.col);
     }
 
     handleCanvasMouseUp(e: MouseEvent) {
+        Utils.log("[mouse up]");
         const coords = this.normalizeMouseCoordinates(e);
         const pos = this.locate(coords.x, coords.y);
         this.selection.focus.set(pos.line, pos.col);
-        this.render();
+        this.renderSelection();
     }
 
     private normalizeMouseCoordinates(e: MouseEvent): { x: number, y: number} {
@@ -148,7 +150,7 @@ export class SlabEditor {
         if (executed) {
             e.preventDefault();
             e.stopPropagation();
-            this.render();
+            this.renderSelection();
         }
         this.commandTriggered = executed;
     }
@@ -191,7 +193,7 @@ export class SlabEditor {
                 if (this.selection.focus.greaterThanOrEqual(changeMarker)) {
                     this.moveMarker(this.selection.focus, e.data.length);
                 }
-                this.render();
+                this.renderSelection();
                 break;
             case ChangeType.Remove:
                 this.update(e.line);
@@ -202,7 +204,7 @@ export class SlabEditor {
                 if (this.selection.focus.greaterThanOrEqual(changeMarker)) {
                     this.moveMarker(this.selection.focus, -e.data.length);
                 }
-                this.render();
+                this.renderSelection();
                 break;
             case ChangeType.InsertLine:
                 const newItem = this.createLineItem();
@@ -262,11 +264,8 @@ export class SlabEditor {
     moveMarkerLine(cursor: Marker, unit: number) {
         const curPos = this.measure(cursor.line, cursor.col);
         const curTop = curPos.top + unit * this.style.lineHeight;
-        console.log(curTop);
         if (curTop >= 0)	{
             const pos = this.locate(curPos.left, curTop);
-            console.log(pos);
-            Utils.log(pos);
             cursor.line = pos.line;
             cursor.col = pos.col;
         }
@@ -283,7 +282,7 @@ export class SlabEditor {
 
     moveMarkerToRowStart(cursor: Marker) {
         const lineItem = this.contentDisplay.children[cursor.line] as HTMLElement;
-        const stats = this.measureLines(lineItem);
+        const stats = this.getLineStat(cursor.line)
 
         const lines = stats.lines;
         let offset = 0;
@@ -298,7 +297,7 @@ export class SlabEditor {
 
     moveMarkerToRowEnd(cursor: Marker) {
         const lineItem = this.contentDisplay.children[cursor.line] as HTMLElement;
-        const stats = this.measureLines(lineItem);
+        const stats = this.getLineStat(cursor.line)
 
         const lines = stats.lines;
         let offset = 0;
@@ -323,16 +322,43 @@ export class SlabEditor {
 
     // Content render methods
 
-    update(line: number, moveCursor = false) {
+    private renderDocument() {
+        this.contentDisplay.innerHTML = "";
+
+        const numLines = this.docObj.numLines;
+        for (const line of this.docObj.contents) {
+            const formattedLine = this.formatter.format(line);
+            const lineStat = this.renderer.build(formattedLine);
+            const lineEl = this.createLineItem();
+            const id = lineEl.getAttribute("id");
+            this.lineStatCache.set(id, lineStat);
+            for (const row of lineStat.lines) {
+                const rowEl = this.createRowItem();
+                rowEl.textContent = row;
+                lineEl.appendChild(rowEl);
+            }
+            this.contentDisplay.appendChild(lineEl);
+        }
+    }
+
+    private update(line: number, moveCursor = false) {
+        // Clear the current line item
         const lineItem = this.contentDisplay.children[line]
-        lineItem.textContent = this.docObj.lineAt(line);
-        // invalidate cache
+        for (let i = lineItem.children.length - 1; i >= 0; i--) {
+            const item = lineItem.children.item(i);
+            item.remove();
+        }
+        // then rebuild it.
+        const textData = this.docObj.lineAt(line);
+        const formattedLine = this.formatter.format(textData);
+        const lineStat = this.renderer.build(formattedLine);
         const id = lineItem.getAttribute("id");
-        delete this.measuredLineCache[id];
-        // if (moveCursor) {
-        //     this.selection.set(line, col + data.length);
-        //     this.render();
-        // }
+        this.lineStatCache.set(id, lineStat);
+        for (const row of lineStat.lines) {
+            const rowEl = this.createRowItem();
+            rowEl.textContent = row;
+            lineItem.appendChild(rowEl);
+        }
     }
 
     addLine() {
@@ -349,7 +375,7 @@ export class SlabEditor {
         this.docObj.insert(newLine, 0, moveText, this.id);
     }
 
-    remove(forward: boolean) {
+    delete(forward: boolean) {
         forward = forward || false;
         if (!this.selection.isCollapsed) {
             this.removeAndCollapse();
@@ -417,19 +443,14 @@ export class SlabEditor {
         this.selection.collapse(true, true);
     }
 
-    // Draw methods
-
-    private render(anchorX?: number, anchorY?: number) {
+    // Renders the selection for the document
+    private renderSelection() {
         this.selectionDisplay.innerHTML = "";
         if (this.selection.isCollapsed) {
             // The selection is single
             this.cursor.show();
-            if (anchorX && anchorY) {
-                this.cursor.attachTo({ top: anchorY, left: anchorX });
-            } else {
-                const pos = this.measure(this.selection.anchor.line, this.selection.anchor.col);
-                this.cursor.attachTo(pos);
-            }
+            const pos = this.measure(this.selection.anchor.line, this.selection.anchor.col);
+            this.cursor.attachTo(pos);
             this.cursor.focus();
         } else {
             // Render the selection cursor
@@ -496,25 +517,24 @@ export class SlabEditor {
         let listItem;
         let line;
         for (let i = 0; i < listItems.length; i += 1) {
-            const _item = listItems[i] as HTMLElement;
-            if ( (el && _item.isSameNode(el)) ||
-            ( this.style.normalizeY(_item.offsetTop + _item.offsetHeight) > y ) ) {
+            const item = listItems[i] as HTMLElement;
+            if ( (el && item.isSameNode(el)) ||
+            ( this.style.normalizeY(item.offsetTop + item.offsetHeight) > y ) ) {
                 line = i;
-                listItem = _item;
+                listItem = item;
                 break;
             }
         }
 
         this.textRuler.adapt(listItem);
         // calculate average width height
-        this.textRuler.text("etaoinsh");
+        this.textRuler.text("etaoinshg");
         const avgW = this.textRuler.width / 8;
         const avgH = this.textRuler.height;
         const listTop = this.style.normalizeY(listItem.offsetTop);
 
         const cursorLine = Math.floor( (y - listTop) / avgH ); // line measurements should be 1 based
-        const stats = this.measureLines(listItem);
-
+        const stats = this.getLineStat(line);
         const lineText = stats.lines[cursorLine];
         this.textRuler.text(lineText);
 
@@ -561,15 +581,16 @@ export class SlabEditor {
         const el = this.contentDisplay.children.item(line) as HTMLDivElement;
         const baseTop = this.style.normalizeY(el.offsetTop);
         this.textRuler.adapt(el);
-        const stats = this.measureLines(el);
+        const stats = this.getLineStat(line);
 
-        const _lines = stats.lines;
+        const lines = stats.lines;
 
         let counter = 0;
-        let partialText, lineNum;
-        for (let i = 0; i < _lines.length; i++) {
-            const innerline = _lines[i];
-            if (counter + innerline.length === col && i < _lines.length - 1) {
+        let partialText;
+        let lineNum;
+        for (let i = 0; i < lines.length; i++) {
+            const innerline = lines[i];
+            if (counter + innerline.length === col && i < lines.length - 1) {
                 // This is to make sure when we reach the end of a "line"
                 // we move to the next line for line wraps
                 lineNum = i + 1;
@@ -587,148 +608,38 @@ export class SlabEditor {
         this.textRuler.text(partialText);
 
         return {
-            top: baseTop + lineNum * stats.avgH,
+            top: baseTop + lineNum * this.style.lineHeight,
             left: this.textRuler.width,
         };
     }
 
-    private measuredLineCache = {};
+    private lineStatCache = new Map();
 
-    private measureLines(el?: HTMLElement, numRows?, strategy?) {
-        // Cache
-        const elId = el.getAttribute("id");
-        if (this.measuredLineCache[elId]) {
-            return this.measuredLineCache[elId];
+    private getLineStat(lineNum: number) {
+        const childItem = this.contentDisplay.children.item(lineNum);
+        const id = childItem.getAttribute("id");
+        let stat = this.lineStatCache.get(id);
+        if (!stat) {
+            const lineData = this.docObj.lineAt(lineNum);
+            const formattedLine = this.formatter.format(lineData);
+            stat = this.renderer.build(formattedLine);
+            this.lineStatCache.set("id", stat);
         }
-
-        this.textRuler.text("etaoinsh");
-        const elH = el.offsetHeight;
-        const elW = el.offsetWidth;
-        const avgW = this.textRuler.width / 8;
-        const avgH = this.textRuler.height;
-        const text = el.textContent;
-
-        strategy = strategy || (text.split(/\s/).length > 1 ? "word" : "character");
-
-        this.textRuler.text(text);
-        if (this.textRuler.height === avgH) {
-            return {
-                lines: [text],
-                avgW,
-                avgH,
-            };
-        }
-
-        const listRows = Math.floor(elH / avgH);
-        const upperLimit = listRows - 1;
-        let lineText;
-        let lineStart;
-        let j;
-        const lines = [];
-
-        if (strategy === "character") {
-            const avgLine = Math.floor(elW / avgW * 0.7);
-            // Easy workaround for script characters
-            lineStart = 0;
-            let lineEnd = lineStart + avgLine;
-
-            for (j = 0; j < upperLimit; j++) {
-                this.textRuler.text(text.substring(lineStart, lineEnd));
-                while (this.textRuler.height === avgH) {
-                    lineEnd += 1;
-                    this.textRuler.text(text.substring(lineStart, lineEnd));
-                }
-                while (this.textRuler.height > avgH) {
-                    lineEnd -= 1;
-                    this.textRuler.text(text.substring(lineStart, lineEnd));
-                }
-                // found!
-                lineText = text.substring(lineStart, lineEnd);
-                lines.push(lineText);
-
-                if (numRows && numRows === j) {
-                    return {
-                        lines,
-                        avgW,
-                        avgH,
-                    };
-                }
-
-                lineStart = lineEnd;
-                lineEnd = lineStart + avgLine;
-            }
-        } else if (strategy === "word") {
-            // English and latin languages with words
-            const words = text.split(" ");
-            // This is to lump all the whitespace together with the previous word
-            // Workaround for how Firefox's word display behavior using css
-            // property white-space: pre-wrap
-            let spaceCount = [];
-            for (let i = words.length - 1; i >= 0; i -= 1) {
-                const word = words[i];
-                if (word === "") {
-                    words.splice(i, 1);
-                    spaceCount.push(" ");
-                } else if (spaceCount.length > 0) {
-                    words[i] = words[i] + spaceCount.join("");
-                    spaceCount = [];
-                }
-            }
-
-            lineStart = 0;
-            let wordStart = 0;
-            let wordEnd = 3;
-            let tempStr = words[wordStart];
-            for (j = 0; j < upperLimit; j++) {
-                this.textRuler.text(tempStr);
-                while (this.textRuler.height === avgH) {
-                    wordEnd += 1;
-                    tempStr = words.slice(wordStart, wordEnd).join(" ");
-                    this.textRuler.text(tempStr);
-                }
-                while (this.textRuler.height > avgH) {
-                    wordEnd -= 1;
-                    tempStr = words.slice(wordStart, wordEnd).join(" ");
-                    this.textRuler.text(tempStr);
-                }
-                lineText = words.slice(wordStart, wordEnd).join(" ");
-                while (text.charAt(lineStart + lineText.length) === " ") {
-                    lineText += " ";
-                }
-                lines.push(lineText);
-
-                if (numRows && numRows === j) {
-                    return {
-                        lines,
-                        avgW,
-                        avgH,
-                    };
-                }
-
-                wordStart = wordEnd;
-                wordEnd = wordStart + 3;
-                tempStr = words[wordEnd];
-                lineStart = lineStart + lineText.length;
-            }
-
-        }
-
-        lineText = text.substr(lineStart);
-        lines.push(lineText);
-
-        const result = {
-            lines,
-            avgW,
-            avgH,
-        };
-        this.measuredLineCache[elId] = result;
-        return result;
+        return stat;
     }
 
     private createLineItem(): HTMLElement {
         const lineItem = document.createElement("div")
         lineItem.classList.add("editor-list-item");
         lineItem.setAttribute("id", `list-item$${Utils.generateId()}`);
+        lineItem.style.minHeight = `${this.style.lineHeight}px`;
+        return lineItem;
+    }
+
+    private createRowItem(): HTMLElement {
+        const lineItem = document.createElement("div")
+        lineItem.classList.add("editor-row-item");
+        lineItem.setAttribute("id", `row-item$${Utils.generateId()}`);
         lineItem.style.minHeight = `${this.style.lineHeight}px`;
         return lineItem;
     }

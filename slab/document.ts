@@ -1,18 +1,18 @@
 import { EventEmitter } from "./events";
 
 export enum ChangeType {
-    Insert, InsertLine, Remove, RemoveLine
+    Insert, InsertLine, Remove, RemoveLine,
 }
 
 export class Document extends EventEmitter {
 
     // id: string;
     // title: string;
-    private contents: string[] = [];
+    contents: string[] = [];
 
     constructor(text: string = "") {
         super();
-        this.contents = text.split(/\n/);        
+        this.contents = text.split(/\n/);
     }
 
     get numLines(): number {
@@ -30,8 +30,8 @@ export class Document extends EventEmitter {
         this.contents.splice(line, 0, "");
         this.emit("change", {
             type: ChangeType.InsertLine,
-            line: line,
-            origin: origin
+            line,
+            origin,
         });
     }
 
@@ -39,8 +39,8 @@ export class Document extends EventEmitter {
         this.contents.splice(line, 1);
         this.emit("change", {
             type: ChangeType.RemoveLine,
-            line: line,
-            origin: origin
+            line,
+            origin,
         });
     }
 
@@ -53,12 +53,12 @@ export class Document extends EventEmitter {
             lineContent.substr(col);
         this.emit("change", {
             type: ChangeType.Insert,
-            line: line,
-            col: col,
-            data: data,
+            line,
+            col,
+            data,
             newContent: this.contents[line],
             oldContent: lineContent,
-            origin: origin
+            origin,
         });
     }
 
@@ -73,12 +73,12 @@ export class Document extends EventEmitter {
             lineContent.substr(col + length);
         this.emit("change", {
             type: ChangeType.Remove,
-            line: line,
-            col: col,
-            data: data,
+            line,
+            col,
+            data,
             newContent: this.contents[line],
             oldContent: lineContent,
-            origin: origin
+            origin,
         });
     }
 
